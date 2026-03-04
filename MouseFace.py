@@ -3,6 +3,14 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import random
+import os
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 
 pygame.init()
@@ -37,7 +45,7 @@ CAM_WIDTH = 200
 CAM_HEIGHT = 200
 CAM_POS = (0,0)
 
-mouse_img = pygame.image.load("mouse.png").convert_alpha()
+mouse_img = pygame.image.load(resource_path("mouse.png")).convert_alpha()
 mouse_img_left = pygame.transform.smoothscale(mouse_img, (48, 48))
 mouse_img_right  = pygame.transform.flip(mouse_img_left, True, False)
 mouse_rect = mouse_img_left.get_rect(center=(WIDTH//2, HEIGHT//2))
@@ -46,7 +54,7 @@ facing = 1
 pos = pygame.Vector2(WIDTH//2, HEIGHT//2)
 vel = pygame.Vector2(0,0)
 
-heart_img = pygame.image.load("heart.png").convert_alpha()
+heart_img = pygame.image.load(resource_path("heart.png")).convert_alpha()
 heart_img = pygame.transform.smoothscale(heart_img, (32, 32))
 hearts = []
 
@@ -63,7 +71,7 @@ INVULNERAVILITY_TIME = 3000
 invulnerable_until = 0
 
 
-cat_img = pygame.image.load("evil_cat.png").convert_alpha()
+cat_img = pygame.image.load(resource_path("evil_cat.png")).convert_alpha()
 cat_img_left = pygame.transform.smoothscale(cat_img, (64, 64))
 cats_left = []
 SPAWN_MIN_MS = 1600
@@ -111,8 +119,6 @@ while True:
 
 
         if game_over and event.type == pygame.MOUSEBUTTONDOWN:
-            pygame.display.update()
-            clock.tick(60)
             if restart_button.collidepoint(event.pos):
                 create_hearts()
                 cats_left.clear()
@@ -124,7 +130,6 @@ while True:
             if quit_button.collidepoint(event.pos):
                 pygame.quit()
                 sys.exit()
-            continue
 
     ok, frame = capture.read()
     if not ok:
@@ -189,21 +194,19 @@ while True:
         vel.y = -JUMP_SPEED
         is_on_ground = False
 
-    keys = pygame.key.get_pressed()
 
-    if keys[pygame.K_LEFT] or nose_leftcheek_length<60:
+    if nose_leftcheek_length<60:
         vel.x-=HOR_ACCE
 
-    if keys[pygame.K_RIGHT] or nose_rightcheek_length<60:
+    if nose_rightcheek_length<60:
         vel.x+=HOR_ACCE
 
     vel.x = hor_speed_limit(vel.x, -MAX_HOR_SPEED, MAX_HOR_SPEED)
 
     #friction for better feeling of movement
-    if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]):
-        vel.x *= HOR_FRICTION
-        if abs(vel.x)<0.05:
-            vel.x = 0
+    vel.x *= HOR_FRICTION
+    if abs(vel.x)<0.05:
+        vel.x = 0
     if vel.x > 0.2:
         facing = -1
     elif vel.x < -0.2:
