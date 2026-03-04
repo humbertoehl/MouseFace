@@ -46,6 +46,22 @@ facing = 1
 pos = pygame.Vector2(WIDTH//2, HEIGHT//2)
 vel = pygame.Vector2(0,0)
 
+heart_img = pygame.image.load("heart.png").convert_alpha()
+heart_img = pygame.transform.smoothscale(heart_img, (32, 32))
+hearts = []
+
+def create_hearts():
+    spacing = 50
+    for i in range (0,3):
+        rect_heart = heart_img.get_rect(topleft=(int(CAM_WIDTH + spacing), 30))
+        hearts.append({"rect_heart": rect_heart})
+        spacing+=50
+
+create_hearts()
+
+INVULNERAVILITY_TIME = 3000
+invulnerable_until = 0
+
 
 cat_img = pygame.image.load("evil_cat.png").convert_alpha()
 cat_img_left = pygame.transform.smoothscale(cat_img, (64, 64))
@@ -71,6 +87,15 @@ def hor_speed_limit(vel, low, high):
     return max(low, min(vel, high))
 
 
+
+#game over logic
+game_over = False
+font_big = pygame.font.SysFont(None, 60)
+font_small = pygame.font.SysFont(None, 20)
+restart_button = pygame.Rect(WIDTH//2 - 80, HEIGHT//2 + 20, 240, 50)
+quit_button = pygame.Rect(WIDTH//2 - 80, HEIGHT//2 + 90, 240, 50)
+
+
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -83,6 +108,23 @@ while True:
             if event.key == pygame.K_SPACE and is_on_ground:
                 vel.y = -JUMP_SPEED
                 is_on_ground = False
+
+
+        if game_over and event.type == pygame.MOUSEBUTTONDOWN:
+            pygame.display.update()
+            clock.tick(60)
+            if restart_button.collidepoint(event.pos):
+                create_hearts()
+                cats_left.clear()
+                vel = pygame.Vector2(0,0)
+                pos = pygame.Vector2(WIDTH//2, HEIGHT//2)
+                mouse_rect.center = pos
+                game_over = False
+
+            if quit_button.collidepoint(event.pos):
+                pygame.quit()
+                sys.exit()
+            continue
 
     ok, frame = capture.read()
     if not ok:
@@ -213,13 +255,20 @@ while True:
     # clenaing
     cats_left = [c for c in cats_left if c["rect_cat_left"].right > 0]
 
-    for c in cats_left:
-        if mouse_rect.colliderect(c["rect_cat_left"]):
-            print("ouch")
-            # logic of collision
-            break
+    now = pygame.time.get_ticks()
+    #cat collision
+    if now >= invulnerable_until:
+        for c in cats_left:
+            if mouse_rect.colliderect(c["rect_cat_left"]):
+                if hearts:
+                    hearts.pop()
+                invulnerable_until = now + INVULNERAVILITY_TIME
+                break
+    
+    if len(hearts)==0:
+        game_over = True
 
-
+    
     screen.fill((30,30,30)) #bg color
     screen.blit(camera_surface, CAM_POS)
     pygame.draw.rect(screen, (30, 30, 30), (*CAM_POS, CAM_WIDTH, CAM_HEIGHT), 2)
@@ -227,10 +276,42 @@ while True:
     for c in cats_left:
         screen.blit(cat_img_left, c["rect_cat_left"])
         # pygame.draw.rect(screen, (255, 0, 0), c["rect_cat_left"], 2)
+
+    for h in hearts:
+        screen.blit(heart_img, h["rect_heart"])
+
     mouse_img = mouse_img_left if facing == 1 else mouse_img_right
-    screen.blit(mouse_img, mouse_rect)
+
+    now = pygame.time.get_ticks()
+    invulnerable = now < invulnerable_until
+    draw_mouse = (not invulnerable) or ((now // 100) % 2 == 0)
+    if draw_mouse:
+        screen.blit(mouse_img, mouse_rect)
     #pygame.draw.rect(screen, (255, 0, 0), mouse_rect, 2)
 
+
+    if game_over:
+        overlay = pygame.Surface((WIDTH, HEIGHT))
+        overlay.set_alpha(180)
+        overlay.fill((0,0,0))
+        screen.blit(overlay,(0,0))
+
+        text = font_big.render("The cats won :c", True, (255,255,255))
+        screen.blit(text, (WIDTH//2 - text.get_width()//2, HEIGHT//2 - 80))
+
+        pygame.draw.rect(screen, (200,200,200), restart_button)
+        pygame.draw.rect(screen, (200,200,200), quit_button)
+
+        restart_text = font_small.render("I will take revenge", True, (0,0,0))
+        quit_text = font_small.render("I quit, the cats are better than me", True, (0,0,0))
+
+        screen.blit(restart_text, (
+            restart_button.centerx - restart_text.get_width()//2,
+            restart_button.centery - restart_text.get_height()//2))
+
+        screen.blit(quit_text, (
+            quit_button.centerx - quit_text.get_width()//2,
+            quit_button.centery - quit_text.get_height()//2))
 
     pygame.display.update()
     clock.tick(60)
