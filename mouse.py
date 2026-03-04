@@ -2,11 +2,12 @@ import pygame, sys
 import cv2
 import mediapipe as mp
 import numpy as np
+import random
 
 
 pygame.init()
 screen = pygame.display.set_mode((800,500))
-pygame.display.set_caption('Face Control')
+pygame.display.set_caption('MouseFace')
 clock = pygame.time.Clock()
 
 capture = cv2.VideoCapture(0)
@@ -42,18 +43,28 @@ mouse_img_right  = pygame.transform.flip(mouse_img_left, True, False)
 mouse_rect = mouse_img_left.get_rect(center=(WIDTH//2, HEIGHT//2))
 facing = 1
 
-
 pos = pygame.Vector2(WIDTH//2, HEIGHT//2)
 vel = pygame.Vector2(0,0)
 
 
-# Physics
+cat_img = pygame.image.load("evil_cat.png").convert_alpha()
+cat_img_left = pygame.transform.smoothscale(cat_img, (64, 64))
+cats_left = []
+SPAWN_MIN_MS = 1600
+SPAWN_MAX_MS = 3500
+next_spawn_ms = pygame.time.get_ticks() + random.randint(SPAWN_MIN_MS, SPAWN_MAX_MS)
+
+CAT_SPEED_MIN = 4
+CAT_SPEED_MAX = 9.5
+
+
+# Physics for the mouse
 GRAVITY = 0.8
-HOR_ACCE = 0.5
-MAX_HOR_SPEED = 7.0
+HOR_ACCE = 0.8
+MAX_HOR_SPEED = 9.0
 HOR_FRICTION = 0.90
 
-JUMP_SPEED = 15
+JUMP_SPEED = 18
 is_on_ground = False
 
 def hor_speed_limit(vel, low, high):
@@ -183,9 +194,39 @@ while True:
         vel.x = 0
 
 
+    #cat logic
+    #spawning
+    now = pygame.time.get_ticks()
+    if now >= next_spawn_ms:
+        y_cat =HEIGHT - cat_img_left.get_height()
+        rect_cat_left = cat_img_left.get_rect(topleft=(WIDTH, y_cat))
+
+        vx_cat_left = random.uniform(CAT_SPEED_MIN, CAT_SPEED_MAX)
+        cats_left.append({"rect_cat_left": rect_cat_left, "vx_cat_left": vx_cat_left})
+
+        next_spawn_ms = now + random.randint(SPAWN_MIN_MS, SPAWN_MAX_MS)
+
+    #moving
+    for c in cats_left:
+        c["rect_cat_left"].x -= c["vx_cat_left"]
+
+    # clenaing
+    cats_left = [c for c in cats_left if c["rect_cat_left"].right > 0]
+
+    for c in cats_left:
+        if mouse_rect.colliderect(c["rect_cat_left"]):
+            print("ouch")
+            # logic of collision
+            break
+
+
     screen.fill((30,30,30)) #bg color
     screen.blit(camera_surface, CAM_POS)
     pygame.draw.rect(screen, (30, 30, 30), (*CAM_POS, CAM_WIDTH, CAM_HEIGHT), 2)
+
+    for c in cats_left:
+        screen.blit(cat_img_left, c["rect_cat_left"])
+        # pygame.draw.rect(screen, (255, 0, 0), c["rect_cat_left"], 2)
     mouse_img = mouse_img_left if facing == 1 else mouse_img_right
     screen.blit(mouse_img, mouse_rect)
     #pygame.draw.rect(screen, (255, 0, 0), mouse_rect, 2)
