@@ -1,0 +1,195 @@
+import pygame, sys
+import cv2
+import mediapipe as mp
+import numpy as np
+
+
+pygame.init()
+screen = pygame.display.set_mode((800,500))
+pygame.display.set_caption('Face Control')
+clock = pygame.time.Clock()
+
+capture = cv2.VideoCapture(0)
+
+
+# Mediapipe face mesh
+mp_face_mesh = mp.solutions.face_mesh
+mp_draw = mp.solutions.drawing_utils
+mp_styles = mp.solutions.drawing_styles
+
+face_mesh = mp_face_mesh.FaceMesh(
+    static_image_mode=False,
+    max_num_faces=1,
+    refine_landmarks=False,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5,
+)
+
+
+
+
+
+HEIGHT = screen.get_height()
+WIDTH = screen.get_width()
+
+CAM_WIDTH = 200
+CAM_HEIGHT = 200
+CAM_POS = (0,0)
+
+mouse_img = pygame.image.load("mouse.png").convert_alpha()
+mouse_img_left = pygame.transform.smoothscale(mouse_img, (48, 48))
+mouse_img_right  = pygame.transform.flip(mouse_img_left, True, False)
+mouse_rect = mouse_img_left.get_rect(center=(WIDTH//2, HEIGHT//2))
+facing = 1
+
+
+pos = pygame.Vector2(WIDTH//2, HEIGHT//2)
+vel = pygame.Vector2(0,0)
+
+
+# Physics
+GRAVITY = 0.8
+HOR_ACCE = 0.5
+MAX_HOR_SPEED = 7.0
+HOR_FRICTION = 0.90
+
+JUMP_SPEED = 15
+is_on_ground = False
+
+def hor_speed_limit(vel, low, high):
+    return max(low, min(vel, high))
+
+
+while True:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            face_mesh.close()
+            capture.release()
+            pygame.quit()
+            sys.exit()
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE and is_on_ground:
+                vel.y = -JUMP_SPEED
+                is_on_ground = False
+
+    ok, frame = capture.read()
+    if not ok:
+        continue
+
+    #mirrored camera
+    frame = cv2.flip(frame, 1)
+
+    #mediapipe
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = face_mesh.process(rgb)
+
+    # draw the mesh onto the frame
+    if results.multi_face_landmarks:
+        for landmarks in results.multi_face_landmarks:
+            # mp_draw.draw_landmarks(
+            #     image=frame,
+            #     landmark_list=landmarks,
+            #     connections=mp_face_mesh.FACEMESH_TESSELATION,
+            #     landmark_drawing_spec=None,
+            #     connection_drawing_spec=mp_styles.get_default_face_mesh_tesselation_style(),
+            # )
+            h, w, _ = frame.shape
+
+            upper_lip = (int(landmarks.landmark[13].x*w), int(landmarks.landmark[13].y*h))
+            # cv2.circle(frame, upper_lip, 10, (0, 0, 255), -1)
+
+            lower_lip = (int(landmarks.landmark[14].x*w), int(landmarks.landmark[14].y*h))
+            # cv2.circle(frame, lower_lip, 10, (0, 0, 255), -1)
+
+            upper_face = (int(landmarks.landmark[10].x*w), int(landmarks.landmark[10].y*h))
+            # cv2.circle(frame, upper_face, 10, (0, 0, 255), -1)
+
+            lower_face = (int(landmarks.landmark[152].x*w), int(landmarks.landmark[152].y*h))
+            # cv2.circle(frame, lower_face, 10, (0, 0, 255), -1)
+
+            nose_point = (int(landmarks.landmark[1].x*w), int(landmarks.landmark[1].y*h))
+            # cv2.circle(frame, nose_point, 10, (0, 0, 255), -1)
+
+            left_cheek = (int(landmarks.landmark[123].x*w), int(landmarks.landmark[123].y*h))
+            # cv2.circle(frame, left_cheek, 10, (0, 0, 255), -1)
+
+            right_cheek = (int(landmarks.landmark[352].x*w), int(landmarks.landmark[352].y*h))
+            # cv2.circle(frame, right_cheek, 10, (0, 0, 255), -1)
+
+
+    open_mouth_length = lower_lip[1]-upper_lip[1]
+    face_height = lower_face[1]-upper_face[1]
+    nose_leftcheek_length = nose_point[0]-left_cheek[0]
+    nose_rightcheek_length = -nose_point[0]+right_cheek[0]
+    # print(nose_leftcheek_length, nose_rightcheek_length)
+
+
+    PROC_W, PROC_H = 200, 200
+
+    little_camera_screen = cv2.resize(frame, (PROC_W, PROC_H), interpolation=cv2.INTER_AREA)
+    little_camera_screen_rgb = cv2.cvtColor(little_camera_screen, cv2.COLOR_BGR2RGB)
+    camera_surface = pygame.surfarray.make_surface(np.transpose(little_camera_screen_rgb, (1, 0, 2)))
+
+
+    if open_mouth_length>20 and is_on_ground:
+        vel.y = -JUMP_SPEED
+        is_on_ground = False
+
+    keys = pygame.key.get_pressed()
+
+    if keys[pygame.K_LEFT] or nose_leftcheek_length<60:
+        vel.x-=HOR_ACCE
+
+    if keys[pygame.K_RIGHT] or nose_rightcheek_length<60:
+        vel.x+=HOR_ACCE
+
+    vel.x = hor_speed_limit(vel.x, -MAX_HOR_SPEED, MAX_HOR_SPEED)
+
+    #friction for better feeling of movement
+    if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]):
+        vel.x *= HOR_FRICTION
+        if abs(vel.x)<0.05:
+            vel.x = 0
+    if vel.x > 0.2:
+        facing = -1
+    elif vel.x < -0.2:
+        facing = 1
+    #gravity
+    vel.y += GRAVITY
+
+    #update pos
+    pos += vel
+    mouse_rect.center = (int(pos.x), int(pos.y))
+
+    # floor collision
+    if mouse_rect.bottom > HEIGHT:
+        mouse_rect.bottom = HEIGHT
+        pos.y = mouse_rect.centery
+        vel.y = 0
+        is_on_ground = True
+    else:
+        is_on_ground = False
+
+    # side collisions
+    if mouse_rect.right > WIDTH:
+        mouse_rect.right = WIDTH
+        pos.x = mouse_rect.centerx
+        vel.x = 0
+
+    if mouse_rect.left < 0:
+        mouse_rect.left = 0
+        pos.x = mouse_rect.centerx
+        vel.x = 0
+
+
+    screen.fill((30,30,30)) #bg color
+    screen.blit(camera_surface, CAM_POS)
+    pygame.draw.rect(screen, (30, 30, 30), (*CAM_POS, CAM_WIDTH, CAM_HEIGHT), 2)
+    mouse_img = mouse_img_left if facing == 1 else mouse_img_right
+    screen.blit(mouse_img, mouse_rect)
+    #pygame.draw.rect(screen, (255, 0, 0), mouse_rect, 2)
+
+
+    pygame.display.update()
+    clock.tick(60)
